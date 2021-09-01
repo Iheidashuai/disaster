@@ -2,89 +2,57 @@ package dao
 
 import (
 	"context"
-	"database/sql"
+	"errors"
+	"fmt"
 	"game/model"
+	"game/utils"
 	"github.com/golang/glog"
 )
 
 const (
-	queryRoleById          = "select id,attack_power,defense,life,hat,clothing,shoes,weapon,pants,level,military_rank from role where id = ?"
-	updateRoleBaseAttr     = "update role set attack = ?,defense = ?,life = ? where id = ?"
-	updateRoleEquipment    = "update role set hat = ?,clothing = ?,shoes = ?,weapon = ?,pants = ?,role = ? where id = ?"
-	updateRoleLevel        = "update role set level = ? where id = ?"
-	updateRoleMilitaryRank = "update role set military_rank = ? where id = ?"
-	addRole                = "insert into role(attack_power,defense,life) values(?,?,?)"
+	queryRole      = "select id,account,username,password from role where role_id = ?"
+	updatePassword = "update role set password = ? where role_id = ?"
+	registerRole   = "insert into role(username,password) values(?,?,?)"
 )
 
 type RoleDao interface {
-	QueryRoleById(ctx context.Context,id int64) (*model.Role,error)
-	UpdateRoleBaseAttr(ctx context.Context,role *model.Role,id int64) error
-	UpdateRoleEquipment(ctx context.Context,role *model.Role,id int64) error
-	UpdateRoleLevel(ctx context.Context,level int64,id int64) error
-	UpdateRoleMilitaryRank(ctx context.Context,level int64,id int64) error
-	AddRole(ctx context.Context,role *model.Role) (int64,error)
+	GetRole(ctx context.Context, roleId int64) (*model.Role, error)
+	Login(ctx context.Context, roleId, password int64) error
+	Register(ctx context.Context, role *model.Role) (int64, error)
+	UpdatePassword(ctx context.Context, roleId int64, oldPassword, newPassword int64) error
 }
 
-func (d *dao) QueryRoleById(ctx context.Context,id int64) (*model.Role,error) {
-	var (
-		row *sql.Row
-		err error
-	)
-	role := &model.Role{}
-	if row = d.db.QueryRow(queryRoleById,id);row.Err() == nil {
-		if err = row.Scan(&role.Id,&role.AttackPower,&role.Defense,&role.Life,&role.Hat,
-			&role.Clothing,&role.Shoes,&role.Weapon,&role.Pants,&role.Level,&role.MilitaryRank);err != nil {
-			glog.Errorf("QueryRoleById error(%s)",err)
+func (d *dao) GetRole(ctx context.Context, roleId int64) (*model.Role, error) {
+	r := &model.Role{}
+	row := d.db.QueryRow(queryRole, roleId)
+	if row.Err() != nil {
+		if err := row.Scan(&r.Id, &r.Account, &r.Username, &r.Password); err != nil {
+			glog.Errorf("GetRole QueryRow error(%s)", err)
 			return nil, err
 		}
-	} else {
-		glog.Errorf("QueryRoleById error(%s)",row.Err())
-		return nil,row.Err()
 	}
-	return role, nil
+	return r, nil
 }
 
-func (d *dao) UpdateRoleBaseAttr(ctx context.Context,role *model.Role,id int64) error {
-	_,err := d.db.Exec(updateRoleBaseAttr,&role.AttackPower,&role.Defense,&role.Life,id)
+func (d *dao) Login(ctx context.Context, roleId int64, password string) error {
+	r, err := d.GetRole(ctx, roleId)
 	if err != nil {
-		glog.Errorf("UpdateRoleBaseAttr error(%s)",err)
+		glog.Errorf("Login error(%s)", err)
 		return err
 	}
-	return nil
+
+	salt := r.Salt
+	if utils.Encrypt(password+salt) == r.Password {
+		return nil
+	}
+	return errors.New(fmt.Sprintf("role (%d) password error", roleId))
 }
 
-func (d *dao) UpdateRoleEquipment(ctx context.Context,role *model.Role,id int64) error {
-	_,err := d.db.Exec(updateRoleEquipment,&role.Hat,&role.Clothing,&role.Shoes,&role.Weapon,&role.Pants,id)
-	if err != nil {
-		glog.Errorf("UpdateRoleEquipment error(%s)",err)
-		return err
-	}
-	return nil
+func (d *dao) Register(ctx context.Context, role *model.Role) (int64, error) {
+	d.db.Exec(registerRole, role.Username, role.Password)
+	return 0, nil
 }
 
-func (d *dao) UpdateRoleLevel(ctx context.Context,level int64,id int64) error {
-	_,err := d.db.Exec(updateRoleLevel,level,id)
-	if err != nil {
-		glog.Errorf("UpdateRoleLevel error(%s)",err)
-		return err
-	}
-	return nil
-}
-
-func (d *dao) UpdateRoleMilitaryRank(ctx context.Context,level int64,id int64) error {
-	_,err := d.db.Exec(updateRoleMilitaryRank,level,id)
-	if err != nil {
-		glog.Errorf("UpdateRoleMilitaryRank error(%s)",err)
-		return err
-	}
-	return nil
-}
-
-func (d *dao) AddRole(ctx context.Context,role *model.Role) (int64,error) {
-	r,err := d.db.Exec(addRole,&role.AttackPower,&role.Defense,&role.Life)
-	if err != nil {
-		glog.Errorf("UpdateRoleMilitaryRank error(%s)",err)
-		return 0,err
-	}
-	return r.LastInsertId()
+func (d *dao) UpdatePassword(ctx context.Context, roleId int64, oldPassword, newPassword int64) error {
+	panic("implement me")
 }
